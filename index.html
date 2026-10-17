@@ -42,7 +42,41 @@ async function rpc(name,args={}){const {data,error}=await db.rpc(name,args);if(e
 async function loadMissions(){try{const raw=await rpc('list_active_missions');missions=(raw||[]).map(m=>({...m,id:m.id||m.mission_id||m.missionId||m.p_mission_id||m.uuid}));const opts='<option value="">Scegli una missione…</option>'+missions.map(m=>`<option value="${esc(m.id)}">${esc(m.title)} (${m.kind==='malus'?'−':'+'}${esc(m.points)})</option>`).join('');$('missionSelectAdmin').innerHTML=opts;$('missionList').innerHTML=missions.length?`<div class="grid">${missions.map(m=>`<article class="card mission-card"><div class="row" style="align-items:flex-start"><span class="pill ${m.kind==='malus'?'malus':'plus'}">${m.kind==='malus'?'MALUS':'MISSIONE'}</span><span class="points" style="color:var(--red);margin-left:auto">${m.kind==='malus'?'−':'+'}${esc(m.points)} PT</span></div><h3 style="margin-top:12px">${esc(m.title)}</h3><p>${esc(m.description||'Nessuna descrizione.')}</p><form class="mission-request-form" data-mission-id="${esc(m.id)}"><div class="field"><label for="details-${esc(m.id||m.title)}">Dettagli facoltativi</label><textarea id="details-${esc(m.id||m.title)}" name="details" maxlength="1000" placeholder="Es. prova inviata nel gruppo WhatsApp"></textarea></div><button type="submit" class="${m.kind==='malus'?'danger':''}" style="width:100%" ${m.id?'':'disabled'}>Invia per approvazione →</button><div class="mission-message"></div></form></article>`).join('')}</div>`:'<div class="empty">Nessuna missione attiva al momento.</div>';document.querySelectorAll('.mission-request-form').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const btn=form.querySelector('button[type="submit"]');const out=form.querySelector('.mission-message');out.innerHTML='';btn.disabled=true;try{const id=form.dataset.missionId;if(!id)throw new Error('Questa missione non ha un identificativo restituito dal database. Avvisa l’amministratrice.');if(!user?.id)throw new Error('La sessione è scaduta: esci e accedi di nuovo.');await rpc('submit_mission_request',{p_mission_id:id,p_details:form.elements.details.value.trim()||null});form.elements.details.value='';out.innerHTML='<div class="message">Richiesta inviata! I punti saranno assegnati solo dopo l’approvazione.</div>';await loadMyRequests();if(profile?.role==='admin')await loadAdminPending()}catch(err){out.innerHTML=`<div class="message error">${esc(err.message)}</div>`}finally{btn.disabled=false}}))}catch(e){$('missionList').innerHTML=`<div class="message error">${esc(e.message)}</div>`}}
 $('onBehalfForm').addEventListener('submit',async e=>{e.preventDefault();message('onBehalfMessage','');try{const selectedMission=$('missionSelectAdmin').value;const selectedPlayer=$('playerSelect').value;if(!selectedMission)throw new Error('Seleziona una missione dal menu prima di creare la richiesta.');if(!selectedPlayer)throw new Error('Seleziona il partecipante.');await rpc('submit_mission_request',{p_mission_id:selectedMission,p_details:$('detailsAdmin').value.trim()||null,p_player_id:selectedPlayer});$('detailsAdmin').value='';message('onBehalfMessage','Richiesta creata e in attesa di approvazione.');await Promise.all([loadMyRequests(),loadAdminPending()])}catch(e){message('onBehalfMessage',e.message,true)}});
 async function loadMyRequests(){try{const rows=await rpc('get_my_mission_requests');$('myRequests').innerHTML=rows.length?rows.slice(0,8).map(r=>`<div class="item"><div class="item-title">${esc(r.mission_title||'Missione')}</div><div class="small muted">${dateText(r.created_at)} · ${esc(r.status)}</div>${r.status==='approved'?`<div class="points">${Number(r.awarded_points)>0?'+':''}${esc(r.awarded_points||0)} pt</div>`:''}</div>`).join(''):'<div class="empty">Non hai ancora inviato richieste.</div>'}catch(e){$('myRequests').innerHTML=`<div class="message error">${esc(e.message)}</div>`}}
-async function loadLeaderboard(){try{const rows=await rpc('get_leaderboard');rows.sort((a,b)=>Number(b.points)-Number(a.points)||String(a.nickname).localeCompare(String(b.nickname),'it'));$('leaderboard').innerHTML=rows.length?`<table class="table"><thead><tr><th>#</th><th>Nickname</th><th>Punti</th><th>Missioni</th><th>Malus</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td class="rank">${i+1}</td><td><strong>${esc(r.nickname)}</strong>${r.player_id===user?.id?' <span class="pill">Tu</span>':''}</td><td class="points">${Number(r.points)||0}</td><td>${Number(r.positive_count)||0}</td><td>${Number(r.negative_count)||0}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">La classifica è ancora vuota.</div>'}catch(e){$('leaderboard').innerHTML=`<div class="message error">${esc(e.message)}</div>`}}
+async function loadLeaderboard(){
+  try{
+    const rows = await rpc('get_leaderboard');
+    rows.sort((a,b) =>
+      Number(b.total_points)-Number(a.total_points) ||
+      String(a.nickname).localeCompare(String(b.nickname),'it')
+    );
+    $('leaderboard').innerHTML = rows.length
+      ? `<table class="table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Nickname</th>
+              <th>Punti</th>
+              <th>Missioni</th>
+              <th>Malus</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r,i) => `
+              <tr>
+                <td class="rank">${i+1}</td>
+                <td><strong>${esc(r.nickname)}</strong>${r.player_id===user?.id?' <span class="pill">Tu</span>':''}</td>
+                <td class="points">${Number(r.total_points)||0}</td>
+                <td>${Number(r.plus_count)||0}</td>
+                <td>${Number(r.malus_count)||0}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`
+      : '<div class="empty">La classifica è ancora vuota.</div>';
+  }catch(e){
+    $('leaderboard').innerHTML = `<div class="message error">${esc(e.message)}</div>`;
+  }
+}
 async function loadPredictions(){try{const [qs,settings]=await Promise.all([rpc('list_active_prediction_questions'),db.from('game_settings').select('predictions_deadline,predictions_locked').eq('id',1).maybeSingle()]);if(settings.error)throw settings.error;questions=qs;const s=settings.data||{};const locked=!!s.predictions_locked||(s.predictions_deadline&&new Date(s.predictions_deadline)<=new Date());$('predictionSettings').textContent=locked?'Pronostici chiusi.':s.predictions_deadline?'Scadenza: '+dateText(s.predictions_deadline):'Pronostici aperti: nessuna scadenza impostata.';$('predictionList').innerHTML=questions.length?questions.map(q=>`<form class="item prediction-form" data-id="${esc(q.id)}"><div class="item-title">${esc(q.question)}</div><div class="field"><label for="answer-${esc(q.id)}">La tua risposta</label><input id="answer-${esc(q.id)}" name="answer" maxlength="1000" required ${locked?'disabled':''} placeholder="Scrivi il tuo pronostico"></div><button ${locked?'disabled':''} type="submit">Salva risposta</button><div class="answer-message"></div></form>`).join(''):'<div class="empty">Nessuna domanda attiva al momento.</div>';document.querySelectorAll('.prediction-form').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const out=form.querySelector('.answer-message');out.innerHTML='';try{await rpc('submit_prediction_answer',{p_question_id:form.dataset.id,p_answer:form.elements.answer.value.trim()});out.innerHTML='<div class="message">Risposta salvata.</div>'}catch(err){out.innerHTML=`<div class="message error">${esc(err.message)}</div>`}}))}catch(e){$('predictionList').innerHTML=`<div class="message error">${esc(e.message)}</div>`}}
 async function loadAdmin(){await Promise.allSettled([loadAdminMissions(),loadAdminPending(),loadAdminQuestions(),loadAdminPlayers(),loadSettings()])}
 if($('refreshPending'))$('refreshPending').addEventListener('click',loadAdminPending);
