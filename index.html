@@ -35,7 +35,7 @@ $('showLogin').onclick=()=>setAuthMode('login');$('showSignup').onclick=()=>setA
 $('authForm').addEventListener('submit',async e=>{e.preventDefault();message('authMessage','');$('authSubmit').disabled=true;try{let result;if(authMode==='signup'){const nickname=$('nickname').value.trim();if(!nickname)throw new Error('Inserisci un nickname.');result=await db.auth.signUp({email:$('email').value.trim(),password:$('password').value,options:{data:{nickname}}});if(result.error)throw result.error;if(!result.data.session){message('authMessage','Account creato! Controlla la tua email per confermare l’indirizzo, poi accedi.');return}}else{result=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(result.error)throw result.error}await loadApp()}catch(err){message('authMessage',err.message||'Errore durante l’accesso.',true)}finally{$('authSubmit').disabled=false}});
 $('logoutBtn').onclick=async()=>{await db.auth.signOut();user=null;profile=null;renderSignedOut()};
 function renderSignedOut(){$('authSection').classList.remove('hidden');$('app').classList.add('hidden');$('logoutBtn').classList.add('hidden');$('welcome').textContent='Accedi per entrare nel gioco.'}
-function switchTab(tab){document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('hidden',el.id!=='tab-'+tab));document.querySelectorAll('.nav button[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));if(tab==='leaderboard')loadLeaderboard();if(tab==='missions')loadMissions();if(tab==='predictions')loadPredictions();if(tab==='admin'&&profile?.role==='admin')loadAdmin()}
+function switchTab(tab){document.querySelectorAll('.tab').forEach(el=>el.classList.toggle('hidden',el.id!=='tab-'+taffb));document.querySelectorAll('.nav button[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===tab));if(tab==='leaderboard')loadLeaderboard();if(tab==='missions')loadMissions();if(tab==='predictions')loadPredictions();if(tab==='admin'&&profile?.role==='admin')loadAdmin()}
 document.querySelectorAll('.nav button[data-tab]').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
 async function loadApp(){const {data:{user:authUser},error:authError}=await db.auth.getUser();if(authError)throw authError;if(!authUser){renderSignedOut();return}user=authUser;const {data:p,error}=await db.from('players').select('id,nickname,role').eq('id',user.id).single();if(error)throw error;profile=p;$('authSection').classList.add('hidden');$('app').classList.remove('hidden');$('logoutBtn').classList.remove('hidden');$('welcome').innerHTML=`Ciao, <strong>${esc(profile.nickname)}</strong> ${profile.role==='admin'?'<span class="pill admin-tag">Amministratrice</span>':''}`;$('adminNav').classList.toggle('hidden',profile.role!=='admin');$('adminOnBehalf').classList.toggle('hidden',profile.role!=='admin');await Promise.allSettled([loadMissions(),loadMyRequests(),loadLeaderboard(),loadPredictions()]);if(profile.role==='admin')await loadAdmin()}
 async function rpc(name,args={}){const {data,error}=await db.rpc(name,args);if(error)throw error;return data}
@@ -80,7 +80,82 @@ async function loadLeaderboard(){
 async function loadPredictions(){try{const [qs,settings]=await Promise.all([rpc('list_active_prediction_questions'),db.from('game_settings').select('predictions_deadline,predictions_locked').eq('id',1).maybeSingle()]);if(settings.error)throw settings.error;questions=qs;const s=settings.data||{};const locked=!!s.predictions_locked||(s.predictions_deadline&&new Date(s.predictions_deadline)<=new Date());$('predictionSettings').textContent=locked?'Pronostici chiusi.':s.predictions_deadline?'Scadenza: '+dateText(s.predictions_deadline):'Pronostici aperti: nessuna scadenza impostata.';$('predictionList').innerHTML=questions.length?questions.map(q=>`<form class="item prediction-form" data-id="${esc(q.id)}"><div class="item-title">${esc(q.question)}</div><div class="field"><label for="answer-${esc(q.id)}">La tua risposta</label><input id="answer-${esc(q.id)}" name="answer" maxlength="1000" required ${locked?'disabled':''} placeholder="Scrivi il tuo pronostico"></div><button ${locked?'disabled':''} type="submit">Salva risposta</button><div class="answer-message"></div></form>`).join(''):'<div class="empty">Nessuna domanda attiva al momento.</div>';document.querySelectorAll('.prediction-form').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const out=form.querySelector('.answer-message');out.innerHTML='';try{await rpc('submit_prediction_answer',{p_question_id:form.dataset.id,p_answer:form.elements.answer.value.trim()});out.innerHTML='<div class="message">Risposta salvata.</div>'}catch(err){out.innerHTML=`<div class="message error">${esc(err.message)}</div>`}}))}catch(e){$('predictionList').innerHTML=`<div class="message error">${esc(e.message)}</div>`}}
 async function loadAdmin(){await Promise.allSettled([loadAdminMissions(),loadAdminPending(),loadAdminQuestions(),loadAdminPlayers(),loadSettings()])}
 if($('refreshPending'))$('refreshPending').addEventListener('click',loadAdminPending);
-async function loadAdminMissions(){const rows=(await rpc('admin_list_missions')||[]).map(m=>({...m,id:m.id||m.mission_id||m.missionId||m.p_mission_id||m.uuid})););$('adminMissionList').innerHTML=rows.length?rows.map(m=>`<div class="item"><div class="item-title">${esc(m.title)} <span class="pill ${m.kind==='malus'?'malus':'plus'}">${m.kind==='malus'?'MALUS':'MISSIONE'} ${esc(m.points)} pt</span></div><div class="small muted">${m.active?'Attiva':'Disattivata'}</div><p>${esc(m.description||'')}</p><div class="row"><button type="button" class="secondary" data-edit-mission="${esc(m.id)}">Modifica</button><button type="button" class="${m.active?'danger':'success'}" data-toggle-mission="${esc(m.id)}" data-active="${m.active?'true':'false'}">${m.active?'Disattiva':'Riattiva'}</button></div></div>`).join(''):'<div class="empty">Ancora nessuna missione.</div>';document.querySelectorAll('[data-edit-mission]').forEach(b=>b.onclick=()=>editMission(rows.find(m=>m.id===b.dataset.editMission)));document.querySelectorAll('[data-toggle-mission]').forEach(b=>b.onclick=async()=>{const m=rows.find(x=>x.id===b.dataset.toggleMission);try{await rpc('admin_save_mission',{p_title:m.title,p_description:m.description||'',p_kind:m.kind,p_points:m.points,p_active:!m.active,p_mission_id:m.id});await Promise.all([loadAdminMissions(),loadMissions()])}catch(e){alert(e.message)}})}catch(e){$('adminMissionList').innerHTML=`<div class="message error">${esc(e.message)}</div>`}}
+async function loadAdminMissions(){
+  try {
+    const rows = (await rpc('admin_list_missions') || []).map(m => ({
+      ...m,
+      id: m.id || m.mission_id || m.missionId || m.p_mission_id || m.uuid
+    }));
+
+    $('adminMissionList').innerHTML = rows.length
+      ? rows.map(m => `
+        <div class="item">
+          <div class="item-title">
+            ${esc(m.title)}
+            <span class="pill ${m.kind === 'malus' ? 'malus' : 'plus'}">
+              ${m.kind === 'malus' ? 'MALUS' : 'MISSIONE'} ${esc(m.points)} pt
+            </span>
+          </div>
+          <div class="small muted">${m.active ? 'Attiva' : 'Disattivata'}</div>
+          <p>${esc(m.description || '')}</p>
+          <div class="row">
+            <button type="button" class="secondary" data-edit-mission="${esc(m.id)}">Modifica</button>
+            <button type="button" class="${m.active ? 'danger' : 'success'}"
+              data-toggle-mission="${esc(m.id)}">
+              ${m.active ? 'Disattiva' : 'Riattiva'}
+            </button>
+            <button type="button" class="danger" data-delete-mission="${esc(m.id)}">
+              Elimina
+            </button>
+          </div>
+        </div>
+      `).join('')
+      : '<div class="empty">Ancora nessuna missione.</div>';
+
+    document.querySelectorAll('[data-edit-mission]').forEach(b => {
+      b.onclick = () => editMission(rows.find(m => m.id === b.dataset.editMission));
+    });
+
+    document.querySelectorAll('[data-toggle-mission]').forEach(b => {
+      b.onclick = async () => {
+        const m = rows.find(x => x.id === b.dataset.toggleMission);
+        if (!m) return;
+        try {
+          await rpc('admin_save_mission', {
+            p_title: m.title,
+            p_description: m.description || '',
+            p_kind: m.kind,
+            p_points: m.points,
+            p_active: !m.active,
+            p_mission_id: m.id
+          });
+          await Promise.all([loadAdminMissions(), loadMissions()]);
+        } catch (e) {
+          alert(e.message);
+        }
+      };
+    });
+
+    document.querySelectorAll('[data-delete-mission]').forEach(b => {
+      b.onclick = async () => {
+        const m = rows.find(x => x.id === b.dataset.deleteMission);
+        if (!m) return;
+        if (!confirm(`Vuoi eliminare la missione "${m.title}"? Questa azione non si può annullare.`)) return;
+        try {
+          await rpc('admin_delete_mission', { p_mission_id: m.id });
+          alert('Missione eliminata.');
+          await Promise.all([loadAdminMissions(), loadMissions()]);
+        } catch (e) {
+          alert(e.message);
+        }
+      };
+    });
+
+  } catch (e) {
+    $('adminMissionList').innerHTML =
+      `<div class="message error">${esc(e.message)}</div>`;
+  }
+}
 function editMission(m){if(!m)return;$('editMissionId').value=m.id;$('missionTitle').value=m.title;$('missionDescription').value=m.description||'';$('missionKind').value=m.kind;$('missionPoints').value=m.points;$('missionActive').checked=!!m.active;$('missionTitle').scrollIntoView({behavior:'smooth',block:'center'})}
 $('resetMission').onclick=()=>{$('missionAdminForm').reset();$('editMissionId').value='';$('missionPoints').value=10;$('missionActive').checked=true;message('missionAdminMessage','')};
 $('missionAdminForm').addEventListener('submit',async e=>{e.preventDefault();message('missionAdminMessage','');try{const points=Number($('missionPoints').value);if(!Number.isInteger(points)||points<1)throw new Error('I punti devono essere un numero intero positivo.');await rpc('admin_save_mission',{p_title:$('missionTitle').value.trim(),p_description:$('missionDescription').value.trim(),p_kind:$('missionKind').value,p_points:points,p_active:$('missionActive').checked,p_mission_id:$('editMissionId').value||null});message('missionAdminMessage','Missione salvata.');$('resetMission').click();await Promise.all([loadAdminMissions(),loadMissions()])}catch(e){message('missionAdminMessage',e.message,true)}});
