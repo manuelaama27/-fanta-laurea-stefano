@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fanta Laurea di Stefano</title>
+<style>
+:root{--giallo:#ffd43b;--blu:#10283b;--rosso:#e84b36;--crema:#fff6df}
+*{box-sizing:border-box}
+body{margin:0;background:var(--crema);color:var(--blu);font-family:system-ui,sans-serif}
+header{background:var(--blu);color:white;padding:24px 18px;text-align:center;border-bottom:7px solid var(--giallo)}
+header small{letter-spacing:3px;font-weight:bold;color:var(--giallo)}
+h1{font-size:clamp(32px,9vw,54px);line-height:1;margin:14px 0}
+header p{margin:8px 0}
+nav{display:flex;gap:8px;padding:12px;overflow:auto;background:white;position:sticky;top:0;z-index:2}
+button{cursor:pointer;font:inherit;border:0;border-radius:12px;padding:11px 14px;font-weight:800}
+nav button{background:#eee7d7;white-space:nowrap}
+nav button.active,.primary{background:var(--giallo);color:var(--blu)}
+main{max-width:760px;margin:auto;padding:16px}
+.hero{background:var(--rosso);color:white;padding:20px;border-radius:20px;transform:rotate(-.5deg)}
+.hero strong{font-size:23px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}
+.stat,.card{background:white;border:2px solid var(--blu);border-radius:16px;padding:14px;box-shadow:3px 4px 0 var(--blu)}
+.stat{text-align:center}.stat b{display:block;font-size:22px}
+.card{margin:12px 0}
+.card h3{margin:4px 0 8px}
+.points{color:#b13b24;font-weight:900}
+.tag{font-size:12px;background:#ffeb9b;padding:4px 8px;border-radius:20px;font-weight:bold}
+button:disabled{opacity:.55;cursor:default}
+input,select{width:100%;padding:12px;border:2px solid #d8d0bd;border-radius:10px;font:inherit;margin:8px 0 14px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+section{display:none}section.active{display:block}
+footer{text-align:center;padding:28px;color:#6c6254}
+.notice{background:#fff0c2;padding:12px;border-radius:12px;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <small>EDIZIONE SPECIALE · MURO LECCE</small>
+  <h1>FANTA<br>LAUREA 💥</h1>
+  <p>Di Stefano · Puglia × disagio</p>
+  <p>Una laurea. Trenta pazzi. Zero dignità.</p>
+</header>
+<nav>
+  <button class="active" data-tab="home">🏠 Home</button>
+  <button data-tab="missioni">🔥 Missioni</button>
+  <button data-tab="classifica">🏆 Classifica</button>
+  <button data-tab="pronostici">🔮 Pronostici</button>
+</nav>
+<main>
+<section id="home" class="active">
+  <div class="hero">
+    <strong>IL DISAGIO È UFFICIALMENTE APERTO.</strong>
+    <p>Completa le missioni, raccogli prove e scala la classifica. Chi perde offre le storie da raccontare per i prossimi dieci anni.</p>
+    <button class="primary" onclick="tab('missioni')">VAI ALLE MISSIONI →</button>
+  </div>
+  <div class="stats">
+    <div class="stat"><b id="tot">0</b>missioni fatte</div>
+    <div class="stat"><b id="punti">0</b>punti tuoi</div>
+    <div class="stat"><b>30</b>potenziali disagiati</div>
+  </div>
+  <div class="card">
+    <h3>🪪 Prima cosa: scegli il tuo nome</h3>
+    <label for="nickname">Nickname da usare al Fanta</label>
+    <input id="nickname" maxlength="24" placeholder="Es. Lu disgraziatu">
+    <button class="primary" onclick="saveName()">SALVA NICKNAME</button>
+  </div>
+  <p class="notice">⚠️ Demo iniziale: i dati si salvano solo su questo dispositivo. La classifica condivisa arriverà quando collegheremo il database.</p>
+</section>
+<section id="missioni">
+  <h2>🔥 Le missioni del disagio</h2>
+  <p>Ogni missione completata vale punti. Le prove vere le organizzeremo nella versione completa!</p>
+  <div id="lista"></div>
+</section>
+<section id="classifica">
+  <h2>🏆 La classifica</h2>
+  <p>Per ora vedi i tuoi punti su questo dispositivo. La graduatoria live sarà collegata in seguito.</p>
+  <div class="card"><div class="row"><b id="nomeClassifica">Giocatore misterioso</b><strong id="puntiClassifica">0 pt</strong></div></div>
+</section>
+<section id="pronostici">
+  <h2>🔮 Pronostici proibiti</h2>
+  <div class="card">
+    <label>Chi farà più casino?</label>
+    <input id="p1" placeholder="Nickname del sospettato">
+    <label>Quante foto verranno scattate?</label>
+    <input id="p2" type="number" min="0" placeholder="Numero previsto">
+    <label>Come finirà la festa?</label>
+    <select id="p3"><option>Balli fino alla chiusura</option><option>Discorso imbarazzante</option><option>Caos incontrollato</option><option>Nessuno ricorda niente</option></select>
+    <button class="primary" onclick="savePred()">SALVA I PRONOSTICI</button>
+    <p id="predFeedback"></p>
+  </div>
+  <p class="notice">Questi pronostici sono una bozza: nella versione completa li bloccheremo all'orario stabilito.</p>
+</section>
+</main>
+<footer>FATTO CON DISAGIO 💛 · MURO LECCESE</footer>
+<script>
+const missions=[
+["Selfie con la comitiva","Fai una foto con almeno 4 partecipanti.",20],
+["Discorso improvvisato","Fai un brindisi dedicato al laureato.",25],
+["Intervista esclusiva","Intervista qualcuno come fosse una celebrità.",20],
+["La foto impossibile","Ricrea una posa assurda con un altro giocatore.",25],
+["Complimento sospetto","Fai un complimento sincero a tre persone.",15],
+["Caccia all'inside joke","Fai ridere qualcuno con una battuta della comitiva.",25],
+["Il paparazzo","Scatta una foto di gruppo memorabile.",15],
+["La dedica epica","Scrivi una dedica esageratamente drammatica a Stefano.",20],
+["Missione segreta","Convinci qualcuno a partecipare a una foto di gruppo.",20],
+["Regina o re del caos","Inventati un titolo ufficiale per la serata.",15],
+["Dialetto sotto esame","Insegna a un amico una frase salentina che usate davvero.",20],
+["Il brindisi cinematografico","Fai un brindisi come in un film epico.",20]
+];
+let done=JSON.parse(localStorage.getItem("fl_done")||"[]");
+function tab(id){
+ document.querySelectorAll("section").forEach(s=>s.classList.toggle("active",s.id===id));
+ document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active",b.dataset.tab===id));
+}
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>tab(b.dataset.tab));
+function render(){
+ document.getElementById("lista").innerHTML=missions.map((m,i)=>`
+ <div class="card"><div class="row"><span class="tag">MISSIONE ${i+1}</span><span class="points">+${m[2]} pt</span></div>
+ <h3>${m[0]}</h3><p>${m[1]}</p>
+ <button ${done.includes(i)?"disabled":""} class="${done.includes(i)?"":"primary"}" onclick="complete(${i})">${done.includes(i)?"✓ Segnata come fatta":"Segna completata"}</button></div>`).join("");
+ document.getElementById("tot").textContent=done.length;
+ document.getElementById("punti").textContent=done.reduce((s,i)=>s+missions[i][2],0);
+ document.getElementById("puntiClassifica").textContent=document.getElementById("punti").textContent+" pt";
+}
+function complete(i){if(!done.includes(i)){done.push(i);localStorage.setItem("fl_done",JSON.stringify(done));render()}}
+function saveName(){
+ const n=document.getElementById("nickname").value.trim();
+ if(!n){alert("Scrivi prima un nickname!");return}
+ localStorage.setItem("fl_name",n);updateName();alert("Nickname salvato su questo dispositivo!");
+}
+function updateName(){
+ const n=localStorage.getItem("fl_name")||"Giocatore misterioso";
+ document.getElementById("nickname").value=localStorage.getItem("fl_name")||"";
+ document.getElementById("nomeClassifica").textContent=n;
+}
+function savePred(){
+ localStorage.setItem("fl_pred",JSON.stringify([
+ document.getElementById("p1").value,
+ document.getElementById("p2").value,
+ document.getElementById("p3").value]));
+ document.getElementById("predFeedback").textContent="Pronostici salvati su questo dispositivo! 🔮";
+}
+render();updateName();
+const pred=JSON.parse(localStorage.getItem("fl_pred")||"null");
+if(pred){document.getElementById("p1").value=pred[0]||"";document.getElementById("p2").value=pred[1]||"";document.getElementById("p3").value=pred[2]||"Caos incontrollato"}
+</script>
+</body>
+</html>
