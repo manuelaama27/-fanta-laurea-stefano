@@ -619,3 +619,400 @@ db.auth.onAuthStateChange((event,session)=>{
 </script>
 </body>
 </html>
+(() => {
+'use strict';
+const SUPABASE_URL = 'https://jvnqrpimepbtvucavywi.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_XAmdL_2IO3g9AD3V5yc1BQ_MvBtgEzQ';
+let db;
+
+try {
+  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+} catch(err) {
+  alert('Errore caricamento Supabase: ' + err.message);
+}
+
+let user = null, profile = null, authMode = 'login', missions = [], questions = [], adminPlayers = [];
+
+const $ = id => document.getElementById(id);
+const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const dateText = value => value ? new Date(value).toLocaleString('it-IT',{dateStyle:'short',timeStyle:'short'}) : '—';
+
+function message(id,text,error=false){
+  const el=$(id);
+  if(el)el.innerHTML=text?`<div class="message ${error?'error':''}">${esc(text)}</div>`:'';
+}
+
+function setAuthMode(mode){
+  authMode=mode;
+  $('nicknameField').classList.toggle('hidden',mode!=='signup');
+  $('showLogin').classList.toggle('secondary',mode!=='login');$('showSignup').classList.toggle('secondary',mode!=='signup');
+  $('authSubmit').textContent=mode==='login'?'Accedi':'Crea account';$('password').autocomplete=mode==='login'?'current-password':'new-password';
+  message('authMessage','');
+}
+
+$('showLogin').onclick=()=>setAuthMode('login');$('showSignup').onclick=()=>setAuthMode('signup');
+
+$('authForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  message('authMessage','');
+  $('authSubmit').disabled=true;
+  try{
+    let result;
+    if(authMode==='signup'){
+      const nickname=$('nickname').value.trim();
+      if(!nickname)throw new Error('Inserisci un nickname.');
+      result=await db.auth.signUp({email:$('email').value.trim(),password:$('password').value,options:{data:{nickname}}});
+      if(result.error)throw result.error;
+      if(!result.data.session){
+        message('authMessage','Account creato! Controlla la tua email per confermare l’indirizzo, poi accedi.');
+        return;
+      }
+    }else{
+      result=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
+      if(result.error)throw result.error;
+    }
+    await loadApp();
+  }catch(err){
+    message('authMessage',err.message||'Errore durante l’accesso.',true);
+  }finally{
+    $('authSubmit').disabled=false;
+  }
+});
+
+$('logoutBtn').onclick=async()=>{
+  await db.auth.signOut();
+  user=null;
+  profile=null;
+  renderSignedOut();
+};
+
+function renderSignedOut(){
+  $('authSection').classList.remove('hidden');$('app').classList.add('hidden');
+  $('logoutBtn').classList.add('hidden');$('welcome').textContent='Accedi per entrare nel gioco.';
+}
+
+function switchTab(tab){
+  document.querySelectorAll('.tab').forEach(el=>{
+    if(el.id === 'tab-' + tab) {
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  });
+  document.querySelectorAll('.nav button[data-tab]').forEach(el=>{
+    el.classList.toggle('active', el.dataset.tab === tab);
+  });
+  if(tab==='leaderboard') loadLeaderboard();
+  if(tab==='missions') loadMissions();
+  if(tab==='predictions') loadPredictions();
+  if(tab==='admin' && profile?.role==='admin') loadAdmin();
+}
+
+document.querySelectorAll('.nav button[data-tab]').forEach(btn=>{
+  btn.addEventListener('click',()=>switchTab(btn.dataset.tab));
+});
+
+async function loadApp(){
+  const {data:{user:authUser},error:authError}=await db.auth.getUser();
+  if(authError)throw authError;
+  if(!authUser){renderSignedOut();return}
+  user=authUser;
+  const {data:p,error}=await db.from('players').select('id,nickname,role').eq('id',user.id).single();
+  if(error)throw error;
+  profile=p;
+  $('authSection').classList.add('hidden');$('app').classList.remove('hidden');
+  $('logoutBtn').classList.remove('hidden');$('welcome').innerHTML=`Ciao, <strong>${esc(profile.nickname)}</strong> ${profile.role==='admin'?'<span class="pill admin-tag">Amministratrice</span>':''}`;
+  $('adminNav').classList.toggle('hidden',profile.role!=='admin');$('adminOnBehalf').classList.toggle('hidden',profile.role!=='admin');
+  
+  await Promise.allSettled([loadMissions(),loadMyRequests(),loadLeaderboard(),loadPredictions()]);
+  if(profile.role==='admin')await loadAdmin();
+  
+  switchTab('home');
+}
+
+async function rpc(name,args={}){
+  const {data,error}=await db.rpc(name,args);
+  if(error)throw error;
+  return data;
+}
+
+async function loadMissions(){
+  try{
+    const raw=await rpc('list_active_missions');
+    missions=(raw||[]).map(m=>({...m,id:m.id||m.mission_id||m.missionId||m.p_mission_id||m.uuid}));
+    const opts='<option value="">Scegli una missione…</option>'+missions.map(m=>`<option value="${esc(m.id)}">${esc(m.title)} (${m.kind==='malus'?'−':'+'}${esc(m.points)})</option>`).join('');
+    $('missionSelectAdmin').innerHTML=opts;
+    $('missionList').innerHTML=missions.length?`<div class="grid">${missions.map(m=>`<article class="card mission-card"><div class="row" style="align-items:flex-start"><span class="pill ${m.kind==='malus'?'malus':'plus'}">${m.kind==='malus'?'MALUS':'MISSIONE'}</span><span class="points" style="color:var(--red);margin-left:auto">${m.kind==='malus'?'−':'+'}${esc(m.points)} PT</span></div><h3 style="margin-top:12px">${esc(m.title)}</h3><p>${esc(m.description||'Nessuna descrizione.')}</p><form class="mission-request-form" data-mission-id="${esc(m.id)}"><div class="field"><label for="details-${esc(m.id||m.title)}">Dettagli facoltativi</label><textarea id="details-${esc(m.id||m.title)}" name="details" maxlength="1000" placeholder="Es. prova inviata nel gruppo WhatsApp"></textarea></div><button type="submit" class="${m.kind==='malus'?'danger':''}" style="width:100\%" ${m.id?'':'disabled'}>Invia per approvazione →</button><div class="mission-message"></div></form></article>`).join('')}</div>`:'<div class="empty">Nessuna missione attiva al momento.</div>';
+    
+    document.querySelectorAll('.mission-request-form').forEach(form=>form.addEventListener('submit',async e=>{
+      e.preventDefault();
+      const btn=form.querySelector('button[type="submit"]');
+      const out=form.querySelector('.mission-message');
+      out.innerHTML='';
+      btn.disabled=true;
+      try{
+        const id=form.dataset.missionId;
+        if(!id)throw new Error('Questa missione non ha un identificativo restituito dal database.');
+        if(!user?.id)throw new Error('La sessione è scaduta: esci e accedi di nuovo.');
+        await rpc('submit_mission_request',{p_mission_id:id,p_details:form.elements.details.value.trim()||null});
+        form.elements.details.value='';
+        out.innerHTML='<div class="message">Richiesta inviata! I punti saranno assegnati solo dopo l’approvazione.</div>';
+        await loadMyRequests();
+        if(profile?.role==='admin')await loadAdminPending();
+      }catch(err){
+        out.innerHTML=`<div class="message error">${esc(err.message)}</div>`;
+      }finally{
+        btn.disabled=false;
+      }
+    }));
+  }catch(e){
+    $('missionList').innerHTML=`<div class="message error">${esc(e.message)}</div>`;
+  }
+}
+
+$('onBehalfForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  message('onBehalfMessage','');
+  try{
+    const selectedMission=$('missionSelectAdmin').value;
+    const selectedPlayer=$('playerSelect').value;
+    if(!selectedMission)throw new Error('Seleziona una missione dal menu.');
+    if(!selectedPlayer)throw new Error('Seleziona il partecipante.');
+    await rpc('submit_mission_request',{p_mission_id:selectedMission,p_details:$('detailsAdmin').value.trim()\vert{}\vert{}null,p_player_id:selectedPlayer});$('detailsAdmin').value='';
+    message('onBehalfMessage','Richiesta creata e in attesa di approvazione.');
+    await Promise.all([loadMyRequests(),loadAdminPending()]);
+  }catch(e){
+    message('onBehalfMessage',e.message,true);
+  }
+});
+
+async function loadMyRequests(){
+  try{
+    const rows=await rpc('get_my_mission_requests');
+    $('myRequests').innerHTML=rows.length?rows.slice(0,8).map(r=>`<div class="item"><div class="item-title">${esc(r.mission_title||'Missione')}</div><div class="small muted">${dateText(r.created_at)} · ${esc(r.status)}</div>${r.status==='approved'?`<div class="points">${Number(r.awarded_points)>0?'+':''}${esc(r.awarded_points||0)} pt</div>`:''}</div>`).join(''):'<div class="empty">Non hai ancora inviato richieste.</div>';
+  }catch(e){
+    $('myRequests').innerHTML=`<div class="message error">${esc(e.message)}</div>`;
+  }
+}
+
+async function loadLeaderboard(){
+  try{
+    const rows=await rpc('get_leaderboard');
+    rows.sort((a,b)=>Number(b.points)-Number(a.points)||String(a.nickname).localeCompare(String(b.nickname),'it'));
+    $('leaderboard').innerHTML=rows.length?`<table class="table"><thead><tr><th>#</th><th>Nickname</th><th>Punti</th><th>Missioni</th><th>Malus</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td class="rank">${i+1}</td><td><strong>${esc(r.nickname)}</strong>${r.player_id===user?.id?' <span class="pill">Tu</span>':''}</td><td class="points">${Number(r.points)||0}</td><td>${Number(r.positive_count)\vert{}\vert{}0}</td><td>${Number(r.negative_count)||0}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">La classifica è ancora vuota.</div>';
+  }catch(e){
+    $('leaderboard').innerHTML=`<div class="message error">${esc(e.message)}</div>`;
+  }
+}
+
+async function loadPredictions(){
+  try{
+    const [qs,settings]=await Promise.all([rpc('list_active_prediction_questions'),db.from('game_settings').select('predictions_deadline,predictions_locked').eq('id',1).maybeSingle()]);
+    if(settings.error)throw settings.error;
+    questions=qs;
+    const s=settings.data||{};
+    const locked=!!s.predictions_locked||(s.predictions_deadline&&new Date(s.predictions_deadline)<=new Date());
+    $('predictionSettings').textContent=locked?'Pronostici chiusi.':s.predictions_deadline?'Scadenza: '+dateText(s.predictions_deadline):'Pronostici aperti.';$('predictionList').innerHTML=questions.length?questions.map(q=>`<form class="item prediction-form" data-id="${esc(q.id)}"><div class="item-title">${esc(q.question)}</div><div class="field"><label for="answer-${esc(q.id)}">La tua risposta</label><input id="answer-${esc(q.id)}" name="answer" maxlength="1000" required ${locked?'disabled':''} placeholder="Scrivi il tuo pronostico"></div><button ${locked?'disabled':''} type="submit">Salva risposta</button><div class="answer-message"></div></form>`).join(''):'<div class="empty">Nessuna domanda attiva.</div>';
+    
+    document.querySelectorAll('.prediction-form').forEach(form=>form.addEventListener('submit',async e=>{
+      e.preventDefault();
+      const out=form.querySelector('.answer-message');
+      out.innerHTML='';
+      try{
+        await rpc('submit_prediction_answer',{p_question_id:form.dataset.id,p_answer:form.elements.answer.value.trim()});
+        out.innerHTML='<div class="message">Risposta salvata.</div>';
+      }catch(err){
+        out.innerHTML=`<div class="message error">${esc(err.message)}</div>`;
+      }
+    }));
+  }catch(e){
+    $('predictionList').innerHTML=`<div class="message error">${esc(e.message)}</div>`;
+  }
+}
+
+async function loadAdmin(){
+  await Promise.allSettled([loadAdminMissions(),loadAdminPending(),loadAdminQuestions(),loadAdminPlayers(),loadSettings()]);
+}
+
+if($('refreshPending'))$('refreshPending').addEventListener('click',loadAdminPending);
+
+async function loadAdminMissions(){
+  try{
+    const rows=await rpc('admin_list_missions');
+    $('adminMissionList').innerHTML=rows.length?rows.map(m=>`<div class="item"><div class="item-title">${esc(m.title)} <span class="pill ${m.kind==='malus'?'malus':'plus'}">${m.kind==='malus'?'MALUS':'MISSIONE'} ${esc(m.points)} pt</span></div><div class="small muted">${m.active?'Attiva':'Disattivata'}</div><p>${esc(m.description||'')}</p><div class="row"><button type="button" class="secondary" data-edit-mission="${esc(m.id)}">Modifica</button><button type="button" class="${m.active?'danger':'success'}" data-toggle-mission="${esc(m.id)}" data-active="${m.active?'true':'false'}">${m.active?'Disattiva':'Riattiva'}</button><button type="button" class="danger" data-delete-mission="${esc(m.id)}">Elimina</button></div></div>`).join(''):'<div class="empty">Nessuna missione.</div>';
+    document.querySelectorAll('[data-edit-mission]').forEach(b=>b.onclick=()=>editMission(rows.find(m=>m.id===b.dataset.editMission)));
+    document.querySelectorAll('[data-toggle-mission]').forEach(b=>b.onclick=async()=>{
+      const m=rows.find(x=>x.id===b.dataset.toggleMission);
+      try{
+        await rpc('admin_save_mission',{p_title:m.title,p_description:m.description||'',p_kind:m.kind,p_points:m.points,p_active:!m.active,p_mission_id:m.id});
+        await Promise.all([loadAdminMissions(),loadMissions()]);
+      }catch(e){alert(e.message)}
+    });
+    document.querySelectorAll('[data-delete-mission]').forEach(b=>b.onclick=async()=>{
+      const m=rows.find(x=>x.id===b.dataset.deleteMission);
+      if(!m)return;
+      if(!confirm(`Eliminare la missione “${m.title}”?`))return;
+      try{
+        await rpc('admin_delete_mission',{p_mission_id:m.id});
+        await Promise.all([loadAdminMissions(),loadMissions()]);
+        message('missionAdminMessage','Missione eliminata.');
+      }catch(e){alert('Impossibile eliminare: '+e.message)}
+    });
+  }catch(e){
+    $('adminMissionList').innerHTML=`<div class="message error">${esc(e.message)}</div>`;
+  }
+}
+
+function editMission(m){
+  if(!m)return;
+  $('editMissionId').value=m.id;
+  $('missionTitle').value=m.title;
+  $('missionDescription').value=m.description\vert{}\vert{}'';$('missionKind').value=m.kind;
+  $('missionPoints').value=m.points;
+  $('missionActive').checked=!!m.active;
+  $('missionTitle').scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+$('resetMission').onclick=()=>{$('missionAdminForm').reset();
+  $('editMissionId').value='';$('missionPoints').value=10;
+  $('missionActive').checked=true;
+  message('missionAdminMessage','');
+};
+
+$('missionAdminForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  message('missionAdminMessage','');
+  try{
+    const points=Number($('missionPoints').value);
+    if(!Number.isInteger(points)||points<1)throw new Error('I punti devono essere interi positivi.');
+    await rpc('admin_save_mission',{p_title:$('missionTitle').value.trim(),p_description:$('missionDescription').value.trim(),p_kind:$('missionKind').value,p_points:points,p_active:$('missionActive').checked,p_mission_id:$('editMissionId').value||null});
+    message('missionAdminMessage','Missione salvata.');
+    $('resetMission').click();
+    await Promise.all([loadAdminMissions(),loadMissions()]);
+  }catch(e){
+    message('missionAdminMessage',e.message,true);
+  }
+});
+
+async function loadAdminPending(){
+  try{
+    const rows=await rpc('admin_list_pending_requests');
+    const html=rows.length?rows.map(r=>`<div class="item"><div class="item-title">${esc(r.nickname)} · ${esc(r.mission_title)}</div><div><span class="pill ${r.kind==='malus'?'malus':'plus'}">${r.kind==='malus'?'MALUS':'MISSIONE'} ${esc(r.points)} pt</span> <span class="small muted">${dateText(r.created_at)}</span></div><p>${esc(r.details||'Nessun dettaglio.')}</p><div class="row"><button class="success" data-approve="${esc(r.request_id||r.id)}">Approva</button><button class="danger" data-reject="${esc(r.request_id||r.id)}">Rifiuta</button></div></div>`).join(''):'<div class="empty">Nessuna richiesta in attesa.</div>';
+    $('pendingRequests').innerHTML=html;
+    if($('pendingRequestsTop'))$('pendingRequestsTop').innerHTML=html;
+    document.querySelectorAll('[data-approve]').forEach(b=>b.onclick=()=>reviewRequest(b.dataset.approve,true));
+    document.querySelectorAll('[data-reject]').forEach(b=>b.onclick=()=>reviewRequest(b.dataset.reject,false));
+  }catch(e){
+    const err=`<div class="message error">${esc(e.message)}</div>`;
+    $('pendingRequests').innerHTML=err;
+    if($('pendingRequestsTop'))$('pendingRequestsTop').innerHTML=err;
+  }
+}
+
+async function reviewRequest(id,approve){
+  if(!confirm(approve?'Confermi la richiesta?':'Rifiutare?'))return;
+  try{
+    await rpc('review_mission_request',{p_request_id:id,p_approve:approve});
+    await Promise.all([loadAdminPending(),loadLeaderboard(),loadMyRequests()]);
+  }catch(e){alert(e.message)}
+}
+
+async function loadAdminPlayers(){
+  try{
+    const {data,error}=await db.from('players').select('id,nickname').order('nickname');
+    if(error)throw error;
+    adminPlayers=data;
+    $('playerSelect').innerHTML=data.map(p=>`<option value="${esc(p.id)}">${esc(p.nickname)}</option>`).join('');
+  }catch(e){
+    $('playerSelect').innerHTML='<option value="">Impossibile caricare</option>';
+  }
+}
+
+async function loadAdminQuestions(){
+  try{
+    const rows=await rpc('admin_list_prediction_questions');
+    $('adminQuestionList').innerHTML=rows.length?rows.map(q=>`<div class="item"><div class="item-title">${esc(q.question)}</div><div class="small muted">${q.active?'Attiva':'Disattivata'}</div><button class="secondary" data-edit-question="${esc(q.id)}" style="margin-top:8px">Modifica</button></div>`).join(''):'<div class="empty">Nessuna domanda.</div>';
+    document.querySelectorAll('[data-edit-question]').forEach(b=>b.onclick=()=>{
+      const q=rows.find(x=>x.id===b.dataset.editQuestion);
+      $('editQuestionId').value=q.id;
+      $('questionText').value=q.question;
+      $('questionActive').checked=!!q.active;
+      $('questionText').scrollIntoView({behavior:'smooth',block:'center'});
+    });
+  }catch(e){
+    $('adminQuestionList').innerHTML=`<div class="notice">Errore caricamento domande: ${esc(e.message)}</div>`;
+  }
+}
+
+$('resetQuestion').onclick=()=>{$('questionForm').reset();
+  $('editQuestionId').value='';$('questionActive').checked=true;
+  message('questionMessage','');
+};
+
+$('questionForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  message('questionMessage','');
+  try{
+    await rpc('admin_save_prediction_question',{p_question:$('questionText').value.trim(),p_active:$('questionActive').checked,p_question_id:$('editQuestionId').value||null});
+    message('questionMessage','Domanda salvata.');
+    $('resetQuestion').click();
+    await Promise.all([loadAdminQuestions(),loadPredictions()]);
+  }catch(e){
+    message('questionMessage',e.message,true);
+  }
+});
+
+async function loadSettings(){
+  try{
+    const {data,error}=await db.from('game_settings').select('predictions_deadline,predictions_locked').eq('id',1).maybeSingle();
+    if(error)throw error;
+    if(data){
+      $('predictionDeadline').value=data.predictions_deadline?new Date(new Date(data.predictions_deadline).getTime()-new Date(data.predictions_deadline).getTimezoneOffset()*60000).toISOString().slice(0,16):'';
+      $('predictionsLocked').checked=!!data.predictions_locked;
+    }
+  }catch(e){
+    message('settingsMessage',e.message,true);
+  }
+}
+
+$('settingsForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  message('settingsMessage','');
+  try{
+    const local=$('predictionDeadline').value;
+    const deadline=local?new Date(local).toISOString():null;
+    await rpc('admin_set_prediction_settings',{p_deadline:deadline,p_locked:$('predictionsLocked').checked});
+    message('settingsMessage','Impostazioni salvate.');
+    await loadPredictions();
+  }catch(e){
+    message('settingsMessage',e.message,true);
+  }
+});
+
+db.auth.onAuthStateChange((event,session)=>{
+  if(event==='SIGNED_OUT'){
+    user=null;
+    profile=null;
+    renderSignedOut();
+  }
+});
+
+// Avvio sicuro protetto da try/catch per evitare blocchi silenziosi
+(async()=>{
+  try {
+    setAuthMode('login');
+    const {data:{session}, error: sessError} = await db.auth.getSession();
+    if (sessError) throw sessError;
+    if(session){
+      await loadApp();
+    } else {
+      renderSignedOut();
+    }
+  } catch(e) {
+    renderSignedOut();
+    message('authMessage', 'Errore di avvio: ' + e.message, true);
+  }
+})();
+
+})();
+
