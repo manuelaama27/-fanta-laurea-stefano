@@ -121,3 +121,37 @@ document.getElementById('refreshAnswers').addEventListener('click',load);
 #missionList .mission-card textarea{min-height:36px;font-size:.8rem;padding:6px}
 #missionList .mission-card button{padding:8px;font-size:.8rem}
 </style>
+<script>
+(function(){
+const list=document.getElementById('missionList');
+if(!list)return;
+function split(){
+  const cards=Array.from(list.querySelectorAll('.mission-card'));
+  if(!cards.length||list.querySelector('.split-section'))return;
+  const plus=cards.filter(c=>c.querySelector('.pill.plus'));
+  const malus=cards.filter(c=>c.querySelector('.pill.malus'));
+  const frag=document.createDocumentFragment();
+  function section(title,items){
+    if(!items.length)return;
+    const wrap=document.createElement('div');
+    wrap.className='split-section';
+    wrap.style.margin='14px 0 6px';
+    const h=document.createElement('h3');
+    h.textContent=title;
+    h.style.margin='0 0 10px';
+    const grid=document.createElement('div');
+    grid.className='grid';
+    items.forEach(c=>grid.appendChild(c));
+    wrap.appendChild(h);
+    wrap.appendChild(grid);
+    frag.appendChild(wrap);
+  }
+  section('🎯 Missioni',plus);
+  section('😈 Malus',malus);
+  list.innerHTML='';
+  list.appendChild(frag);
+}
+new MutationObserver(split).observe(list,{childList:true});
+split();
+})();
+</script>
