@@ -109,3 +109,15 @@ async function load(){
 document.getElementById('refreshAnswers').addEventListener('click',load);
 })();
 </script>
+<style>
+#missionList .grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr));gap:8px}
+#missionList .mission-card{padding:10px;border-radius:12px;border-width:1.5px;box-shadow:2px 2px 0 var(--red)}
+#missionList .mission-card h3{font-size:.95rem;margin:8px 0 4px}
+#missionList .mission-card p{font-size:.8rem;margin:0 0 6px}
+#missionList .mission-card .points{font-size:.9rem}
+#missionList .mission-card .pill{font-size:.65rem;padding:2px 6px}
+#missionList .mission-card .field{margin:6px 0}
+#missionList .mission-card .field label{display:none}
+#missionList .mission-card textarea{min-height:36px;font-size:.8rem;padding:6px}
+#missionList .mission-card button{padding:8px;font-size:.8rem}
+</style>
