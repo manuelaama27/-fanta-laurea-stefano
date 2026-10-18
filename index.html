@@ -155,3 +155,47 @@ new MutationObserver(split).observe(list,{childList:true});
 split();
 })();
 </script>
+<script>
+(function(){
+const db=window.supabase.createClient('https://jvnqrpimepbtvucavywi.supabase.co','sb_publishable_XAmdL_2IO3g9AD3V5yc1BQ_MvBtgEzQ');
+const tab=document.getElementById('tab-missions');
+if(!tab)return;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const card=document.createElement('div');
+card.className='card';
+card.style.marginTop='16px';
+card.innerHTML='<h2>😈 Segnala un malus</h2><p class="muted small">Hai visto qualcuno commettere un malus? Segnalalo qui e manda la prova nel gruppo. I punti si tolgono a lui solo dopo la verifica.</p><div class="field"><label for="malusPlayer">Chi lo ha fatto</label><select id="malusPlayer"></select></div><div class="field"><label for="malusKind">Quale malus</label><select id="malusKind"></select></div><div class="field"><label for="malusDetails">Dettagli facoltativi</label><textarea id="malusDetails" maxlength="500" placeholder="Es. prova mandata nel gruppo"></textarea></div><button type="button" id="malusSend" class="danger" style="width:100%">Segnala il malus</button><div id="malusMsg"></div>';
+tab.appendChild(card);
+const msg=(t,err)=>{document.getElementById('malusMsg').innerHTML=t?'<div class="message '+(err?'error':'')+'">'+esc(t)+'</div>':''};
+let myId=null,loaded=false;
+async function load(){
+  const {data:{session}}=await db.auth.getSession();
+  if(!session)return;
+  myId=session.user.id;
+  const [pl,ms]=await Promise.all([
+    db.from('players').select('id,nickname,role').order('nickname'),
+    db.rpc('list_active_missions')
+  ]);
+  if(pl.error||ms.error){msg((pl.error||ms.error).message,true);return}
+  document.getElementById('malusPlayer').innerHTML='<option value="">Scegli un giocatore…</option>'+pl.data.filter(p=>p.id!==myId&&p.role!=='admin').map(p=>'<option value="'+esc(p.id)+'">'+esc(p.nickname)+'</option>').join('');
+  document.getElementById('malusKind').innerHTML='<option value="">Scegli un malus…</option>'+ms.data.filter(m=>m.kind==='malus').map(m=>'<option value="'+esc(m.id)+'">'+esc(m.title)+' (−'+esc(m.points)+')</option>').join('');
+  loaded=true;
+}
+document.getElementById('malusSend').addEventListener('click',async()=>{
+  msg('');
+  const player=document.getElementById('malusPlayer').value;
+  const mission=document.getElementById('malusKind').value;
+  if(!player||!mission){msg('Scegli sia il giocatore sia il malus.',true);return}
+  const btn=document.getElementById('malusSend');
+  btn.disabled=true;
+  const {error}=await db.rpc('submit_mission_request',{p_mission_id:mission,p_details:document.getElementById('malusDetails').value.trim()||null,p_player_id:player});
+  btn.disabled=false;
+  if(error){msg(error.message,true);return}
+  document.getElementById('malusDetails').value='';
+  msg('Segnalazione inviata! Sarà valutata dopo la verifica.');
+});
+db.auth.onAuthStateChange((ev,session)=>{if(session&&!loaded)setTimeout(load,300)});
+document.querySelectorAll('.nav button[data-tab="missions"]').forEach(b=>b.addEventListener('click',()=>{if(!loaded)load()}));
+load();
+})();
+</script>
