@@ -260,3 +260,37 @@ document.querySelectorAll('.nav button[data-tab="missions"]').forEach(b=>b.addEv
 loadMine();
 })();
 </script>
+<script>
+(function(){
+const db=window.supabase.createClient('https://jvnqrpimepbtvucavywi.supabase.co','sb_publishable_XAmdL_2IO3g9AD3V5yc1BQ_MvBtgEzQ');
+const adminTab=document.getElementById('tab-admin');
+if(!adminTab)return;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dateText=v=>v?new Date(v).toLocaleString('it-IT',{dateStyle:'short',timeStyle:'short'}):'—';
+
+const card=document.createElement('div');
+card.className='card';
+card.style.cssText='margin-bottom:16px;border-color:var(--red);box-shadow:4px 4px 0 var(--yellow)';
+card.innerHTML=`<div class="row" style="align-items:center"><div style="flex:2"><h2 style="margin:0">💡 Proposte di missioni e malus</h2><p class="muted small" style="margin:6px 0 0">Idee mandate dai partecipanti. Compaiono nella scheda Missioni solo quando premi Approva.</p></div><button type="button" id="refreshProposals" class="secondary">Aggiorna proposte</button></div><div id="proposalMsg"></div><div id="proposalList" style="margin-top:12px">Caricamento…</div>`;
+adminTab.insertBefore(card,adminTab.firstChild);
+
+const msg=(t,err)=>{document.getElementById('proposalMsg').innerHTML=t?'<div class="message '+(err?'error':'')+'">'+esc(t)+'</div>':''};
+
+async function loadProposals(){
+  const list=document.getElementById('proposalList');
+  const {data,error}=await db.rpc('admin_list_pending_proposals');
+  if(error){list.innerHTML='<div class="message error">'+esc(error.message)+'</div>';return}
+  list.innerHTML=data.length?data.map(r=>`<div class="item">
+    <div class="item-title">${esc(r.title)}</div>
+    <div><span class="pill ${r.kind==='malus'?'malus':'plus'}">${r.kind==='malus'?'MALUS':'MISSIONE'}</span> <span class="small muted">proposta da ${esc(r.nickname||'?')} · ${dateText(r.created_at)}</span></div>
+    <p>${esc(r.description||'Nessuna descrizione.')}</p>
+    <div class="row">
+      <div class="field" style="margin:0"><label for="pp-${esc(r.id)}">Punti</label><input id="pp-${esc(r.id)}" type="number" min="1" max="100000" value="${esc(r.points)}"></div>
+      <button type="button" class="success" data-prop-ok="${esc(r.id)}">Approva</button>
+      <button type="button" class="danger" data-prop-no="${esc(r.id)}">Rifiuta</button>
+    </div></div>`).join(''):'<div class="empty">Nessuna proposta in attesa.</div>';
+  list.querySelectorAll('[data-prop-ok]').forEach(b=>b.onclick=()=>review(b.dataset.propOk,true));
+  list.querySelectorAll('[data-prop-no]').forEach(b=>b.onclick=()=>review(b.dataset.propNo,false));
+}
+
+async function
