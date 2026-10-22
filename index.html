@@ -463,3 +463,28 @@ show(saved&&groups[saved]?saved:'requests');
 updateBadges();
 })();
 </script>
+<script>
+(function(){
+const home=document.getElementById('tab-home');
+if(!home)return;
+const h=[...home.querySelectorAll('h2')].find(x=>x.textContent.trim()==='Come funziona');
+if(!h)return;
+const card=h.closest('.card');
+if(!card)return;
+card.style.gridColumn='1 / -1';
+card.innerHTML=`
+<h2>Per Ste 🎓❤️</h2>
+<p>Ci sono traguardi che meritano di essere festeggiati nel modo giusto, circondati dalle persone con cui hai condiviso risate, momenti belli e un pezzo di strada. Oggi è il momento di celebrare Ste, tutto l’impegno che lo ha portato fin qui e l’inizio di un nuovo capitolo.</p>
+<p>E siccome una giornata così non poteva passare senza un po’ di sana competizione tra amici, è nato il Fanta Laurea: un modo per rendere questa festa ancora più speciale, creare nuovi ricordi e divertirci tutti insieme.</p>
+<h3 style="margin-top:18px">Come funziona il Fanta Laurea?</h3>
+<p>Il gioco è semplice: completa le missioni, evita i malus e fai i tuoi pronostici per accumulare punti e scalare la classifica!</p>
+<ul style="padding-left:20px;line-height:1.6">
+<li><strong>Missioni:</strong> completa le sfide e invia una foto o un video nel gruppo WhatsApp come prova.</li>
+<li><strong>Malus:</strong> attenzione ai comportamenti previsti dal regolamento, perché potrebbero farti perdere punti!</li>
+<li><strong>Pronostici:</strong> prova a indovinare cosa succederà durante la giornata e conquista punti extra.</li>
+<li><strong>Punteggi:</strong> le prove e i malus vengono verificati prima di essere conteggiati.</li>
+</ul>
+<p>Alla fine, chi avrà totalizzato più punti conquisterà il primo posto in classifica.</p>
+<p><strong>Ora non resta che giocare, divertirsi e festeggiare Ste come merita!</strong> ❤️🎓</p>`;
+})();
+</script>
