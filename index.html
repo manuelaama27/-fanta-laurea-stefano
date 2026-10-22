@@ -292,5 +292,21 @@ async function loadProposals(){
   list.querySelectorAll('[data-prop-ok]').forEach(b=>b.onclick=()=>review(b.dataset.propOk,true));
   list.querySelectorAll('[data-prop-no]').forEach(b=>b.onclick=()=>review(b.dataset.propNo,false));
 }
-
-async function
+async function review(id,approve){
+  msg('');
+  let points=null;
+  if(approve){
+    points=parseInt(document.getElementById('pp-'+id).value,10);
+    if(!Number.isInteger(points)||points<1){msg('I punti devono essere un numero positivo.',true);return}
+  }
+  if(!confirm(approve?'Approvare la proposta? Comparirà subito a tutti tra le missioni.':'Rifiutare questa proposta?'))return;
+  const {error}=await db.rpc('admin_review_proposal',{p_proposal_id:id,p_approve:approve,p_points:points});
+  if(error){msg(error.message,true);return}
+  msg(approve?'Proposta approvata: ora è tra le missioni.':'Proposta rifiutata.');
+  loadProposals();
+}
+document.getElementById('refreshProposals').addEventListener('click',loadProposals);
+document.querySelectorAll('.nav button[data-tab="admin"]').forEach(b=>b.addEventListener('click',loadProposals));
+db.auth.onAuthStateChange((ev,session)=>{if(session)setTimeout(()=>{const nav=document.getElementById('adminNav');if(nav&&!nav.classList.contains('hidden'))loadProposals()},800)});
+})();
+</script>
