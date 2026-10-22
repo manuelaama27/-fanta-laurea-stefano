@@ -367,3 +367,99 @@ if(want){
 }
 })();
 </script>
+<script>
+(function(){
+const tab=document.getElementById('tab-admin');
+if(!tab)return;
+const $=id=>document.getElementById(id);
+const cardOf=id=>{const el=$(id);return el?el.closest('.card'):null};
+const grid=tab.querySelector(':scope > .grid');
+
+const reqCard=cardOf('pendingRequestsTop');
+const propCard=cardOf('proposalList');
+const newCard=cardOf('missionAdminForm');
+const manageCard=cardOf('adminMissionList');
+const dupCard=cardOf('pendingRequests');
+const answersCard=cardOf('adminAnswers');
+
+// Raggruppo in due schede i pezzi sciolti dei pronostici
+const qForm=$('questionForm'),qList=$('adminQuestionList'),sForm=$('settingsForm');
+const qCard=document.createElement('div');qCard.className='card';
+qCard.innerHTML='<h2>Domande dei pronostici</h2>';
+if(qForm)qCard.appendChild(qForm);
+if(qList){qList.style.marginTop='12px';qCard.appendChild(qList)}
+const sCard=document.createElement('div');sCard.className='card';
+if(sForm)sCard.appendChild(sForm);
+if(grid){
+  const hr=grid.querySelector(':scope > hr');if(hr)hr.remove();
+  grid.appendChild(qCard);grid.appendChild(sCard);
+}
+if(dupCard)dupCard.style.display='none';
+
+const groups={
+  requests:[reqCard].filter(Boolean),
+  proposals:[propCard].filter(Boolean),
+  missions:[newCard,manageCard].filter(Boolean),
+  predictions:[answersCard,qCard,sCard].filter(Boolean)
+};
+const labels={requests:'📥 Richieste',proposals:'💡 Proposte',missions:'🎯 Missioni e malus',predictions:'🔮 Pronostici'};
+
+// Barra delle schede
+const bar=document.createElement('div');
+bar.className='nav';
+bar.innerHTML=Object.keys(labels).map(k=>'<button type="button" data-sub="'+k+'">'+labels[k]+'<span class="pill plus" data-badge="'+k+'" style="margin-left:6px;display:none"></span></button>').join('');
+tab.insertBefore(bar,tab.firstChild);
+
+function show(name){
+  Object.keys(groups).forEach(k=>groups[k].forEach(el=>{el.style.display=(k===name)?'':'none'}));
+  bar.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.sub===name));
+  try{sessionStorage.setItem('fl_sub',name)}catch(e){}
+}
+bar.addEventListener('click',e=>{const b=e.target.closest('button[data-sub]');if(b)show(b.dataset.sub)});
+
+// Filtro Tutte / Missioni / Malus sulle richieste
+let filter='all';
+const top=$('pendingRequestsTop');
+const chips=document.createElement('div');
+chips.className='row';chips.style.marginTop='12px';
+chips.innerHTML='<button type="button" data-f="all">Tutte</button><button type="button" data-f="plus">Missioni</button><button type="button" data-f="malus">Malus</button>';
+if(top)top.parentNode.insertBefore(chips,top);
+const kindOf=it=>it.querySelector('.pill.malus')?'malus':'plus';
+const names={all:'Tutte',plus:'Missioni',malus:'Malus'};
+
+function applyFilter(){
+  if(!top)return 0;
+  const items=[...top.querySelectorAll(':scope > .item')];
+  items.forEach(it=>{it.style.display=(filter==='all'||kindOf(it)===filter)?'':'none'});
+  const n={all:items.length,plus:items.filter(i=>kindOf(i)==='plus').length,malus:items.filter(i=>kindOf(i)==='malus').length};
+  chips.querySelectorAll('button').forEach(b=>{
+    b.classList.toggle('secondary',b.dataset.f!==filter);
+    b.textContent=names[b.dataset.f]+' ('+n[b.dataset.f]+')';
+  });
+  return n.all;
+}
+chips.addEventListener('click',e=>{const b=e.target.closest('button[data-f]');if(b){filter=b.dataset.f;applyFilter()}});
+
+// Numeretti sulle schede
+function setBadge(k,n){
+  const p=bar.querySelector('[data-badge="'+k+'"]');
+  if(!p)return;
+  p.textContent=n;
+  p.style.display=n>0?'inline-block':'none';
+}
+function updateBadges(){
+  setBadge('requests',applyFilter());
+  const pl=$('proposalList');
+  setBadge('proposals',pl?pl.querySelectorAll(':scope > .item').length:0);
+}
+['pendingRequestsTop','proposalList'].forEach(id=>{
+  const el=$(id);
+  if(el)new MutationObserver(updateBadges).observe(el,{childList:true});
+});
+
+let saved=null;
+try{saved=sessionStorage.getItem('fl_sub')}catch(e){}
+show(saved&&groups[saved]?saved:'requests');
+updateBadges();
+})();
+</script>
