@@ -199,3 +199,64 @@ document.querySelectorAll('.nav button[data-tab="missions"]').forEach(b=>b.addEv
 load();
 })();
 </script>
+<script>
+(function(){
+const db=window.supabase.createClient('https://jvnqrpimepbtvucavywi.supabase.co','sb_publishable_XAmdL_2IO3g9AD3V5yc1BQ_MvBtgEzQ');
+const tab=document.getElementById('tab-missions');
+if(!tab)return;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const card=document.createElement('div');
+card.className='card';
+card.style.marginTop='16px';
+card.innerHTML=`<h2>💡 Proponi una missione o un malus</h2>
+<p class="muted small">Hai un'idea? Mandala qui: comparirà per tutti solo dopo l'approvazione dell'amministratrice.</p>
+<div class="field"><label for="propKind">Tipo</label><select id="propKind"><option value="plus">Missione positiva</option><option value="malus">Malus</option></select></div>
+<div class="field"><label for="propTitle">Titolo</label><input id="propTitle" maxlength="100" placeholder="Es. Balla sul tavolo"></div>
+<div class="field"><label for="propDesc">Descrizione</label><textarea id="propDesc" maxlength="1000" placeholder="Spiega cosa bisogna fare"></textarea></div>
+<div class="field"><label for="propPoints">Punti suggeriti</label><input id="propPoints" type="number" min="1" max="100000" value="10"></div>
+<button type="button" id="propSend" style="width:100%">Invia proposta</button>
+<div id="propMsg"></div>
+<h3 style="margin-top:18px">Le mie proposte</h3>
+<div id="propList"><div class="muted">Caricamento…</div></div>`;
+tab.appendChild(card);
+
+const msg=(t,err)=>{document.getElementById('propMsg').innerHTML=t?'<div class="message '+(err?'error':'')+'">'+esc(t)+'</div>':''};
+const labels={pending:'⏳ In attesa',approved:'✅ Approvata',rejected:'❌ Rifiutata'};
+
+async function loadMine(){
+  const list=document.getElementById('propList');
+  const {data:{session}}=await db.auth.getSession();
+  if(!session){list.innerHTML='';return}
+  const {data,error}=await db.rpc('get_my_mission_proposals');
+  if(error){list.innerHTML='<div class="message error">'+esc(error.message)+'</div>';return}
+  list.innerHTML=data.length?data.map(r=>'<div class="item"><div class="item-title">'+esc(r.title)+'</div><div class="small muted">'+(r.kind==='malus'?'Malus':'Missione')+' · '+esc(r.points)+' pt · '+(labels[r.status]||esc(r.status))+'</div></div>').join(''):'<div class="empty">Non hai ancora proposto niente.</div>';
+}
+
+document.getElementById('propSend').addEventListener('click',async()=>{
+  msg('');
+  const title=document.getElementById('propTitle').value.trim();
+  const points=parseInt(document.getElementById('propPoints').value,10);
+  if(!title){msg('Inserisci un titolo.',true);return}
+  if(!Number.isInteger(points)||points<1){msg('I punti devono essere un numero positivo.',true);return}
+  const btn=document.getElementById('propSend');
+  btn.disabled=true;
+  const {error}=await db.rpc('submit_mission_proposal',{
+    p_title:title,
+    p_description:document.getElementById('propDesc').value.trim(),
+    p_kind:document.getElementById('propKind').value,
+    p_points:points
+  });
+  btn.disabled=false;
+  if(error){msg(error.message,true);return}
+  document.getElementById('propTitle').value='';
+  document.getElementById('propDesc').value='';
+  document.getElementById('propPoints').value=10;
+  msg('Proposta inviata! Aspetta l\'approvazione.');
+  loadMine();
+});
+
+db.auth.onAuthStateChange((ev,session)=>{if(session)setTimeout(loadMine,300)});
+document.querySelectorAll('.nav button[data-tab="missions"]').forEach(b=>b.addEventListener('click',loadMine));
+loadMine();
+})();
+</script>
