@@ -531,3 +531,76 @@ new MutationObserver(addButtons).observe(list,{childList:true});
 addButtons();
 })();
 </script>
+<script>
+(function(){
+const db=window.supabase.createClient('https://jvnqrpimepbtvucavywi.supabase.co','sb_publishable_XAmdL_2IO3g9AD3V5yc1BQ_MvBtgEzQ');
+const form=document.getElementById('questionForm');
+const list=document.getElementById('adminQuestionList');
+if(!form||!list)return;
+
+// campo punti nel modulo
+const activeLabel=document.getElementById('questionActive').closest('label');
+const field=document.createElement('div');
+field.className='field';
+field.innerHTML='<label for="questionPoints">Punti se la risposta è giusta</label><input id="questionPoints" type="number" min="1" max="100000" value="10">';
+activeLabel.parentNode.insertBefore(field,activeLabel);
+
+// punti mostrati accanto a ogni domanda
+let pts={};
+function decorate(){
+  list.querySelectorAll(':scope > .item').forEach(item=>{
+    const b=item.querySelector('[data-edit-question]');
+    if(!b)return;
+    const p=pts[b.dataset.editQuestion];
+    if(p===undefined)return;
+    let tag=item.querySelector('.q-points');
+    if(!tag){
+      tag=document.createElement('span');
+      tag.className='pill plus q-points';
+      tag.style.marginLeft='8px';
+      const info=item.querySelector('.small.muted');
+      (info||item).appendChild(tag);
+    }
+    tag.textContent=p+' pt';
+  });
+}
+async function loadPts(){
+  const {data,error}=await db.rpc('admin_get_question_points');
+  if(error)return;
+  pts={};
+  data.forEach(r=>{pts[r.id]=r.points});
+  decorate();
+}
+new MutationObserver(loadPts).observe(list,{childList:true});
+loadPts();
+
+// premendo Modifica, il campo si riempie
+list.addEventListener('click',e=>{
+  const b=e.target.closest('[data-edit-question]');
+  if(b&&pts[b.dataset.editQuestion]!==undefined)document.getElementById('questionPoints').value=pts[b.dataset.editQuestion];
+});
+
+// salvataggio con i punti
+document.addEventListener('submit',async e=>{
+  if(e.target.id!=='questionForm')return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  const out=document.getElementById('questionMessage');
+  const show=(t,err)=>{out.innerHTML='<div class="message '+(err?'error':'')+'">'+t+'</div>'};
+  const text=document.getElementById('questionText').value.trim();
+  const points=parseInt(document.getElementById('questionPoints').value,10);
+  if(!text){show('Scrivi la domanda.',true);return}
+  if(!Number.isInteger(points)||points<1){show('I punti devono essere un numero positivo.',true);return}
+  const {error}=await db.rpc('admin_save_prediction_question',{
+    p_question:text,
+    p_active:document.getElementById('questionActive').checked,
+    p_question_id:document.getElementById('editQuestionId').value||null,
+    p_points:points
+  });
+  if(error){show(error.message,true);return}
+  show('Domanda salvata. Aggiorno la pagina…');
+  try{sessionStorage.setItem('fl_tab','admin')}catch(x){}
+  setTimeout(()=>location.reload(),700);
+},true);
+})();
+</script>
