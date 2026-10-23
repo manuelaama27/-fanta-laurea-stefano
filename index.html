@@ -488,3 +488,46 @@ card.innerHTML=`
 <p><strong>Ora non resta che giocare, divertirsi e festeggiare Ste come merita!</strong> ❤️🎓</p>`;
 })();
 </script>
+<script>
+(function(){
+const db=window.supabase.createClient('https://jvnqrpimepbtvucavywi.supabase.co','sb_publishable_XAmdL_2IO3g9AD3V5yc1BQ_MvBtgEzQ');
+const list=document.getElementById('adminQuestionList');
+if(!list)return;
+
+function addButtons(){
+  list.querySelectorAll(':scope > .item').forEach(item=>{
+    if(item.querySelector('[data-del-question]'))return;
+    const edit=item.querySelector('[data-edit-question]');
+    if(!edit)return;
+    const del=document.createElement('button');
+    del.type='button';
+    del.className='danger';
+    del.style.cssText='margin-top:8px;margin-left:8px';
+    del.setAttribute('data-del-question',edit.dataset.editQuestion);
+    del.textContent='Elimina';
+    edit.insertAdjacentElement('afterend',del);
+  });
+}
+
+list.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-del-question]');
+  if(!b)return;
+  const item=b.closest('.item');
+  const title=item?item.querySelector('.item-title').textContent:'questa domanda';
+  if(!confirm('Eliminare definitivamente la domanda “'+title+'”?\n\nVerranno eliminate anche tutte le risposte date dai partecipanti. L’operazione non si può annullare.'))return;
+  b.disabled=true;
+  const id=b.dataset.delQuestion;
+  const {error}=await db.rpc('admin_delete_prediction_question',{p_question_id:id});
+  if(error){alert('Impossibile eliminare: '+error.message);b.disabled=false;return}
+  const editing=document.getElementById('editQuestionId');
+  if(editing&&editing.value===id){const r=document.getElementById('resetQuestion');if(r)r.click()}
+  if(item)item.remove();
+  if(!list.querySelector(':scope > .item'))list.innerHTML='<div class="empty">Nessuna domanda creata.</div>';
+  const refresh=document.getElementById('refreshAnswers');
+  if(refresh)refresh.click();
+});
+
+new MutationObserver(addButtons).observe(list,{childList:true});
+addButtons();
+})();
+</script>
