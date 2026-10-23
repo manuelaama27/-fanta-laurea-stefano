@@ -604,3 +604,90 @@ document.addEventListener('submit',async e=>{
 },true);
 })();
 </script>
+<script>
+(function(){
+const db=window.supabase.createClient('https://jvnqrpimepbtvucavywi.supabase.co','sb_publishable_XAmdL_2IO3g9AD3V5yc1BQ_MvBtgEzQ');
+const appEl=document.getElementById('app');
+const $=id=>document.getElementById(id);
+if(!appEl)return;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const typing=()=>{const a=document.activeElement;return a&&['TEXTAREA','INPUT','SELECT'].includes(a.tagName)};
+
+/* barra del conto alla rovescia */
+const bar=document.createElement('div');
+bar.style.cssText='display:none;position:fixed;top:0;left:0;right:0;z-index:60;background:var(--red);color:#fff;text-align:center;font-weight:900;padding:calc(10px + env(safe-area-inset-top,0px)) 12px 10px;border-bottom:4px solid var(--yellow)';
+bar.innerHTML='<div style="font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--yellow)">⏳ Pronostici aperti!</div><div id="cdTime" style="font-size:2rem;line-height:1.1;font-variant-numeric:tabular-nums">--:--</div><button type="button" id="cdGo" style="margin-top:6px">Scrivi i pronostici →</button>';
+document.body.appendChild(bar);
+const showBar=()=>{bar.style.display='block';document.body.style.paddingTop=bar.offsetHeight+'px'};
+const hideBar=()=>{bar.style.display='none';document.body.style.paddingTop=''};
+$('cdGo').onclick=()=>{const b=document.querySelector('.nav button[data-tab="predictions"]');if(b)b.click();window.scrollTo({top:0,behavior:'smooth'})};
+
+function fmt(ms){const s=Math.max(0,Math.floor(ms/1000));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;const p=n=>String(n).padStart(2,'0');return (h?h+':':'')+p(m)+':'+p(x)}
+
+let cur=null,dl=null;
+function compute(s){
+  const d=s.predictions_deadline?new Date(s.predictions_deadline).getTime():null;
+  dl=d;
+  if(s.predictions_locked)return d===null?'waiting':'closed';
+  if(d===null)return 'open_free';
+  return d<=Date.now()?'closed':'open';
+}
+function setNotice(k){
+  const n=$('predictionSettings');if(!n)return;
+  if(k==='waiting')n.textContent='⏳ I pronostici non sono ancora aperti: si parte al via!';
+  else if(k==='closed')n.textContent='🔒 Pronostici chiusi.';
+}
+function lock(on){document.querySelectorAll('#predictionList input,#predictionList button').forEach(x=>{x.disabled=on})}
+const isOpen=k=>k==='open'||k==='open_free';
+function onChange(from,to){
+  setNotice(to);
+  const isAdmin=!$('adminNav').classList.contains('hidden');
+  if(!isOpen(from)&&isOpen(to)){
+    if(!isAdmin&&!typing()){try{sessionStorage.setItem('fl_tab','predictions')}catch(e){}location.reload();return}
+    lock(false);
+  }else if(isOpen(from)&&!isOpen(to))lock(true);
+}
+function tick(){
+  if(appEl.classList.contains('hidden')){hideBar();return}
+  if(cur==='open'&&dl!==null&&dl<=Date.now()){cur='closed';onChange('open','closed')}
+  if(cur==='open'){$('cdTime').textContent=fmt(dl-Date.now());showBar()}else hideBar();
+}
+async function poll(silent){
+  if(appEl.classList.contains('hidden'))return;
+  const {data,error}=await db.from('game_settings').select('predictions_deadline,predictions_locked').eq('id',1).maybeSingle();
+  if(error||!data)return;
+  const k=compute(data);
+  if(cur===null){cur=k;setNotice(k)}
+  else if(k!==cur){const from=cur;cur=k;if(silent)setNotice(k);else onChange(from,k)}
+  tick();
+}
+setInterval(tick,1000);
+setInterval(()=>{if(!document.hidden)poll(false)},5000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll(false)});
+setTimeout(()=>poll(false),1500);
+
+/* pannello "Dai il via" per l'admin */
+const sf=$('settingsForm');
+if(sf){
+  const card=document.createElement('div');
+  card.className='notice';
+  card.style.cssText='margin:0 0 16px;background:#fff0ba';
+  card.innerHTML='<h3 style="margin:0 0 6px">🚀 Dai il via ai pronostici</h3><p class="muted small" style="margin:0 0 8px">Quando premi il via, tutti vedono il conto alla rovescia e possono rispondere fino alla scadenza.</p><div class="field"><label for="goMinutes">Durata</label><select id="goMinutes"><option value="5">5 minuti</option><option value="10" selected>10 minuti</option><option value="15">15 minuti</option><option value="30">30 minuti</option><option value="60">1 ora</option></select></div><div class="row"><button type="button" id="goStart" class="success">🚀 Dai il via</button><button type="button" id="goStop" class="danger">🔒 Chiudi ora</button><button type="button" id="goWait" class="secondary">↩️ Rimetti in attesa</button></div><div id="goMsg"></div>';
+  sf.parentNode.insertBefore(card,sf);
+
+  async function setSettings(iso,locked,okMsg){
+    const out=$('goMsg');
+    const {error}=await db.rpc('admin_set_prediction_settings',{p_deadline:iso,p_locked:locked});
+    if(error){out.innerHTML='<div class="message error">'+esc(error.message)+'</div>';return}
+    const f=$('predictionDeadline'),l=$('predictionsLocked');
+    if(f)f.value=iso?new Date(new Date(iso).getTime()-new Date(iso).getTimezoneOffset()*60000).toISOString().slice(0,16):'';
+    if(l)l.checked=locked;
+    out.innerHTML='<div class="message">'+okMsg+'</div>';
+    await poll(true);
+  }
+  $('goStart').onclick=async()=>{const m=parseInt($('goMinutes').value,10);if(!confirm('Dare il via? Parte subito il conto alla rovescia di '+m+' minuti per tutti.'))return;await setSettings(new Date(Date.now()+m*60000).toISOString(),false,'Via! Il conto alla rovescia è partito.')};
+  $('goStop').onclick=async()=>{if(!confirm('Chiudere subito i pronostici?'))return;await setSettings(new Date().toISOString(),true,'Pronostici chiusi.')};
+  $('goWait').onclick=async()=>{if(!confirm('Rimettere i pronostici in attesa? Nessuno potrà rispondere finché non dai il via.'))return;await setSettings(null,true,'Pronostici in attesa del via.')};
+}
+})();
+</script>
